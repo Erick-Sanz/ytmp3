@@ -1,0 +1,116 @@
+name: build-installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  # --------------------------------------------------------------------- macOS
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Dependencias
+        run: pip install --upgrade pip pyinstaller PySide6 pillow pyobjc-framework-Cocoa
+      - name: Icono
+        run: test -f assets/icon.icns || python make_icon.py
+      - name: Construir .app
+        run: |
+          pyinstaller --noconfirm --windowed --clean \
+            --name ytmp3 --target-arch arm64 \
+            --icon assets/icon.icns \
+            --osx-bundle-identifier com.erick.ytmp3 \
+            --add-data "assets:assets" \
+            --hidden-import ytmp3_core --hidden-import Foundation \
+            ytmp3_qt.py
+      - name: Crear DMG
+        run: |
+          brew install create-dmg
+          mkdir -p dmgsrc && cp -R dist/ytmp3.app dmgsrc/
+          create-dmg \
+            --volname ytmp3 --volicon assets/icon.icns \
+            --window-size 660 420 --icon-size 120 \
+            --icon "ytmp3.app" 165 232 --app-drop-link 495 232 \
+            --hide-extension "ytmp3.app" --no-internet-enable \
+            "dist/ytmp3.dmg" "dmgsrc" || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ytmp3-macos
+          path: dist/ytmp3.dmg
+
+  # -------------------------------------------------------------------- Ubuntu
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Librerias del sistema (Qt + FUSE)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2 libegl1 libxcb-cursor0 libxcb-xinerama0
+      - name: Dependencias
+        run: pip install --upgrade pip pyinstaller PySide6 pillow
+      - name: Construir binario
+        run: |
+          pyinstaller --noconfirm --windowed --clean \
+            --name ytmp3 \
+            --add-data "assets:assets" \
+            --hidden-import ytmp3_core \
+            ytmp3_qt.py
+      - name: Empaquetar AppImage
+        run: |
+          set -e
+          APPDIR=AppDir
+          mkdir -p "$APPDIR/usr/bin"
+          cp -r dist/ytmp3/* "$APPDIR/usr/bin/"
+          cp assets/icon_1024.png "$APPDIR/ytmp3.png"
+          printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=ytmp3' \
+            'Exec=ytmp3' 'Icon=ytmp3' 'Categories=AudioVideo;Audio;' \
+            'Terminal=false' > "$APPDIR/ytmp3.desktop"
+          printf '%s\n' '#!/bin/bash' \
+            'HERE="$(dirname "$(readlink -f "$0")")"' \
+            'exec "$HERE/usr/bin/ytmp3" "$@"' > "$APPDIR/AppRun"
+          chmod +x "$APPDIR/AppRun"
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+          chmod +x appimagetool
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          ./appimagetool "$APPDIR" ytmp3-x86_64.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ytmp3-linux
+          path: ytmp3-x86_64.AppImage
+
+  # ------------------------------------------------------------------- Windows
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Dependencias
+        run: pip install --upgrade pip pyinstaller PySide6 pillow winotify
+      - name: Icono .ico
+        run: python -c "from PIL import Image; Image.open('assets/icon_1024.png').save('assets/icon.ico', sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)])"
+      - name: Construir .exe
+        run: >
+          pyinstaller --noconfirm --windowed --clean
+          --name ytmp3 --icon assets/icon.ico
+          --add-data "assets;assets"
+          --hidden-import ytmp3_core
+          ytmp3_qt.py
+      - name: Instalador (Inno Setup)
+        run: |
+          choco install innosetup -y
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" scripts\ytmp3.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ytmp3-windows
+          path: dist/ytmp3-setup.exe

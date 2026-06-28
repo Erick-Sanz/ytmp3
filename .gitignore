@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Build / empaquetado
+build/
+dist/
+*.spec
+.buildvenv/
+venv/
+.venv/
+
+# Artefactos de icono generados
+assets/icon.iconset/
+
+# macOS
+.DS_Store
+
+# Editores
+.vscode/
+.idea/
