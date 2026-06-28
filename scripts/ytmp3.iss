@@ -2,6 +2,8 @@
 ; Empaqueta la build onedir de PyInstaller (dist\ytmp3\) en un setup.exe.
 
 [Setup]
+; rutas relativas resueltas desde la raiz del repo (el .iss vive en scripts/)
+SourceDir=..
 AppName=ytmp3
 AppVersion=1.0.0
 AppPublisher=erick
